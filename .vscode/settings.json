@@ -1,4 +1,5 @@
 {
   "python.analysis.autoImportCompletions": false,
-  "python.analysis.typeCheckingMode": "basic"
+  "python.analysis.typeCheckingMode": "basic",
+  "notebook.output.scrolling": true
 }
