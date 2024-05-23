@@ -1,2 +1,5 @@
 /datasets/mnist/mnist_test.csv
 /datasets/mnist/mnist_train.csv
+datasets/mnist/mnist_test.csv
+datasets/mnist/mnist_train.csv
+/datasets/breast_cancer
