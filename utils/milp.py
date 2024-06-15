@@ -8,9 +8,8 @@ def codify_network_image_classification(mdl, layers, input_variables, intermedia
 
 # @title Relaxado
 def codify_network_relaxed(
-    model, mdl_original:mp.Model, dataframe:pd.DataFrame, method:str, relaxe_constraints:bool, output_bounds_binary_variables, bounds
+    model, mdl_original:mp.Model, dataframe:pd.DataFrame, method:str, relaxe_constraints:bool, output_bounds_binary_variables
 ):
-    
     
     layers = model.layers
     num_features = layers[0].get_weights()[0].shape[0]
@@ -65,8 +64,7 @@ def codify_network_relaxed(
         intermediate_variables,
         decision_variables,
         output_variables,
-        output_bounds_binary_variables,
-        bounds=bounds
+        output_bounds_binary_variables
     )
 
     
@@ -97,8 +95,7 @@ def codify_network_fischetti_relaxed(
     intermediate_variables,
     decision_variables,
     output_variables,
-    output_bounds_binary_variables,
-    bounds=[]
+    output_bounds_binary_variables
 ):
     output_bounds = []
     
