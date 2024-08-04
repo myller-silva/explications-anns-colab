@@ -1,3 +1,5 @@
 /datasets/mnist/test.csv
 /datasets/mnist/train.csv
+/datasets/mnist/data.csv
 **/__pycache__/
+venv/

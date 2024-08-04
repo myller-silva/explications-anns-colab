@@ -5,7 +5,7 @@ from typing import Tuple, List
 
 
 def insert_output_constraints_fischetti(mdl, output_variables, network_output, binary_variables):
-    print(output_variables)
+    # print(output_variables)
     variable_output = output_variables[network_output]
     aux_var = 0
 
@@ -31,6 +31,8 @@ def insert_output_constraints_tjeng(mdl, output_variables, network_output, binar
 
     return mdl
 
+
+from time import time 
 def get_minimal_explanation(
     mdl: mp.Model, # modelo milp
     network_input, # np.ndarray / list 
@@ -38,8 +40,9 @@ def get_minimal_explanation(
     n_classes, # int
     method, # string
     output_bounds=None, # list[float, float]
-    initial_explanation=None # list[LinearConstraint] -> trocar para dictionary
-) -> Tuple[List[LinearConstraint], mp.Model]:
+    initial_explanation=None, # list[LinearConstraint]
+    time_limit=None, # float
+) -> Tuple[List[LinearConstraint], mp.Model, bool]:
     assert not (
         method == "tjeng" and output_bounds == None
     ), "If the method tjeng is chosen, output_bounds must be passed."
@@ -59,13 +62,19 @@ def get_minimal_explanation(
     else:
         mdl = insert_output_constraints_fischetti(mdl, output_variables, network_output, binary_variables)
 
+    inicio = time()
+    time_out = False
     for constraint in input_constraints:
         mdl.remove_constraint(constraint)
         mdl.solve(log_output=False)
         if mdl.solution is not None:
             mdl.add_constraint(constraint)
+        if time_limit is not None and (time() - inicio) > time_limit:
+            time_out = True
+            break
+    
     inputs = mdl.find_matching_linear_constraints("input")
-    return (inputs, mdl)
+    return (inputs, mdl, time_out)
 
 def get_explanation_relaxed(
     mdl: mp.Model,
@@ -90,7 +99,7 @@ def get_explanation_relaxed(
     x_vars = mdl.find_matching_vars('x_')
     x_values = [feature for i, feature in enumerate(network_input[0])]
     
-    i = 0 
+    i = 0
     for constraint in input_constraints:
         mdl.remove_constraint(constraint)
         x, v = x_vars[i] , float(x_values[i])

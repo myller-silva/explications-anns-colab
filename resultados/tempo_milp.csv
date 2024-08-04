@@ -1,0 +1,16 @@
+dataset,modelo,metodo,tempo_milp,tempo_milp_relaxed
+iris,model_1layers_20neurons.h5,fischetti,0.6625247001647949,0.01912522315979
+iris,model_2layers_20neurons.h5,fischetti,1.998133659362793,0.0332365036010742
+iris,model_3layers_20neurons.h5,fischetti,6.928937673568726,0.0325052738189697
+breast_cancer,model_1layers_20neurons.h5,fischetti,0.5019130706787109,0.028289794921875
+breast_cancer,model_2layers_20neurons.h5,fischetti,5.00141716003418,0.0335702896118164
+breast_cancer,model_3layers_20neurons.h5,fischetti,36.38177967071533,0.0997529029846191
+wine,model_1layers_20neurons.h5,fischetti,0.6477882862091064,0.0193991661071777
+wine,model_2layers_20neurons.h5,fischetti,4.706785678863525,0.0584943294525146
+wine,model_3layers_20neurons.h5,fischetti,15.06183409690857,0.0555973052978515
+digits,model_1layers_20neurons.h5,fischetti,2.248725175857544,0.054534912109375
+digits,model_2layers_20neurons.h5,fischetti,11.504761934280396,0.0605921745300293
+digits,model_3layers_20neurons.h5,fischetti,58.23610305786133,0.0806128978729248
+mnist,model_1layers_20neurons.h5,fischetti,14.85487151145935,4.171863079071045
+mnist,model_2layers_20neurons.h5,fischetti,204.91858410835263,3.547405958175659
+mnist,model_3layers_20neurons.h5,fischetti,1273.2736539840698,3.133519172668457
