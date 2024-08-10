@@ -41,8 +41,7 @@ def get_minimal_explanation(
     method, # string
     output_bounds=None, # list[float, float]
     initial_explanation=None, # list[LinearConstraint]
-    time_limit=None, # float
-) -> Tuple[List[LinearConstraint], mp.Model, bool]:
+) -> Tuple[List[LinearConstraint], mp.Model]:
     assert not (
         method == "tjeng" and output_bounds == None
     ), "If the method tjeng is chosen, output_bounds must be passed."
@@ -62,19 +61,14 @@ def get_minimal_explanation(
     else:
         mdl = insert_output_constraints_fischetti(mdl, output_variables, network_output, binary_variables)
 
-    inicio = time()
-    time_out = False
     for constraint in input_constraints:
         mdl.remove_constraint(constraint)
         mdl.solve(log_output=False)
         if mdl.solution is not None:
             mdl.add_constraint(constraint)
-        if time_limit is not None and (time() - inicio) > time_limit:
-            time_out = True
-            break
     
     inputs = mdl.find_matching_linear_constraints("input")
-    return (inputs, mdl, time_out)
+    return (inputs, mdl)
 
 def get_explanation_relaxed(
     mdl: mp.Model,
@@ -106,10 +100,16 @@ def get_explanation_relaxed(
         i = i+1
         left = max(0, v - delta)
         right = min(1, v + delta)
+        # if left > 0:
+        #     constraint_left =   mdl.add_constraint(x >= right)
+        # if right < 1:
+        #     constraint_right =  mdl.add_constraint(x <=  left)
+        
         if left > 0:
-            constraint_left =   mdl.add_constraint(x >= right)
+            constraint_left =   mdl.add_constraint(x >= left)
         if right < 1:
-            constraint_right =  mdl.add_constraint(x <=  left)
+            constraint_right =  mdl.add_constraint(x <= right )
+            
         mdl.solve(log_output=False)
         if mdl.solution is not None:
             mdl.add_constraint(constraint)
