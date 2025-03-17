@@ -9,7 +9,8 @@ from docplex.mp.constr import LinearConstraint
 def insert_output_constraints_fischetti(
     mdl, output_variables, network_output, binary_variables
 ):
-    """Insert the output constraints for the MILP model using the method proposed by Fischetti et al."""
+    """Insert the output constraints for the MILP model
+    using the method proposed by Fischetti et al."""
     variable_output = output_variables[network_output]
     aux_var = 0
 
@@ -25,7 +26,8 @@ def insert_output_constraints_fischetti(
 def insert_output_constraints_tjeng(
     mdl, output_variables, network_output, binary_variables, output_bounds
 ):
-    """Insert the output constraints for the MILP model using the method proposed by Tjeng et al."""
+    """Insert the output constraints for the MILP model
+    using the method proposed by Tjeng et al."""
     variable_output = output_variables[network_output]
     upper_bounds_diffs = (
         output_bounds[network_output][1] - np.array(output_bounds)[:, 0]
@@ -95,6 +97,68 @@ def get_minimal_explanation(
 
     inputs = mdl.find_matching_linear_constraints("input")
     return (inputs, mdl)
+
+
+def get_explanation_range(
+    milp_model: mp.Model,
+    network_input: np.ndarray,
+    network_output: int,
+    n_classes: int,
+    delta: float = 0.1,
+) -> Tuple[dict, mp.Model]:
+    # ) -> Tuple[List[LinearConstraint], mp.Model]:
+    """Get an explanation for a given input and output using the MILP model."""
+
+    # Adiciona as restricoes de igualdade para a entrada da rede
+    input_constraints = milp_model.add_constraints(
+        [
+            milp_model.get_var_by_name(f"x_{i}") == feature.numpy()
+            for i, feature in enumerate(network_input[0])
+        ],
+        names="input_eq",
+    )
+
+    # Adiciona as variáveis binárias para a saída da rede
+    binary_variables = milp_model.binary_var_list(n_classes - 1, name="b")  # type: ignore
+
+    # Adiciona a restrição de que pelo menos uma variável binária deve ser igual a 1
+    milp_model.add_constraint(milp_model.sum(binary_variables) >= 1)  # type: ignore
+
+    # Adiciona as restrições de saída para a rede
+    output_variables = [milp_model.get_var_by_name(f"o_{i}") for i in range(n_classes)]
+    milp_model = insert_output_constraints_fischetti(
+        milp_model, output_variables, network_output, binary_variables
+    )
+
+    x_vars = milp_model.find_matching_vars("x_")
+    x_values = [feature for i, feature in enumerate(network_input[0])]
+
+    for i, constraint in enumerate(input_constraints):
+        # Remover a restrição de igualdade
+        milp_model.remove_constraint(constraint)
+
+        # Adicionar a restrição de intervalo
+        # x, v = str(constraint.left_expr), float(constraint.right_expr.constant)
+        # x, v = constraint.left_expr, constraint.right_expr.constant
+        x, v = x_vars[i], float(x_values[i])
+        lb, ub = 0, 1
+
+        constraint_range = milp_model.add_range(
+            max(lb, v - delta), x, min(ub, v + delta), rng_name=f"input_range_{i}"
+        )
+
+        milp_model.solve(log_output=False)
+        if milp_model.solution is not None:
+            # Adicionar a restrição de igualdade de volta
+            milp_model.add_constraint(constraint)
+
+            # Remover a restrição de intervalo que foi adicionada
+            milp_model.remove_constraint(constraint_range)
+
+    inputs = milp_model.find_matching_linear_constraints("input_eq")
+    inputs_range = milp_model.find_matching_linear_constraints("input_range")
+
+    return ({"eq": inputs, "range": inputs_range}, milp_model)
 
 
 def get_explanation_relaxed(
