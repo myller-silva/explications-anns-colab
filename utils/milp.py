@@ -1,9 +1,98 @@
 """Mixed Integer Linear Programming (MILP) utilities."""
 
+from typing import Optional
 import numpy as np
 import pandas as pd
 from cplex import infinity
 import docplex.mp.model as mp
+from keras.api import Model as KerasModel
+
+
+def relax_model(
+    model: mp.Model,
+    neural_network: KerasModel,
+    layers_to_relax: Optional[list[bool]] = None,
+) -> mp.Model:
+    """
+    Relax the model by modifying the constraints and variables of the model
+    Args:
+    model: The MILP model to be relaxed.
+    neural_network: The neural network to be relaxed.
+    layers_to_relax: A list of booleans indicating which hidden layers should be relaxed.
+    If None, all hidden layers will be relaxed.
+
+    Returns:
+    The relaxed MILP model.
+    """
+
+    model = model.copy()
+
+    if layers_to_relax is None:  # Relax all hidden layers by default
+        layers_to_relax = [True] * len(neural_network.layers)
+
+    assert len(layers_to_relax) == len(neural_network.layers), (
+        "The length of hidden_layers_to_relax must be equal "
+        "to the number of layers in the neural network"
+    )
+
+    # Iterate over the hidden layers skipping the output layer
+    for i, _ in enumerate(neural_network.layers[:-1]):
+        # Skip the layer if it should not be relaxed
+        if not layers_to_relax[i]:
+            continue
+
+        A = neural_network.layers[i].get_weights()[0].T
+        b = neural_network.layers[i].bias.numpy()
+
+        # If the layer is the first hidden layer, the input variables are 'x'
+        x = (
+            model.find_matching_vars(f"y_{i-1}_")
+            if i != 0
+            else model.find_matching_vars("x_")
+        )
+
+        y = model.find_matching_vars(f"y_{i}_")
+        s = model.find_matching_vars(f"s_{i}_")
+        a = model.find_matching_vars(f"a_{i}_")
+
+        for j in range(A.shape[0]):  # Iterate over neurons in the layer
+            # Remove constraints for the neuron j in the layer i
+            model.remove_constraints(
+                [
+                    model.get_constraint_by_name(f"c_{i}_{j}"),
+                    model.get_constraint_by_name(f"c_s_ind_{i}_{j}"),
+                    model.get_constraint_by_name(f"c_y_ind_{i}_{j}"),
+                ]
+            )
+
+            # Change the type of the variable to continuous for the relaxed j-th neuron in the i-th layer
+            a[j].set_vartype("Continuous")
+
+            # Add the new constraints for the relaxed j-th neuron in the i-th layer
+            m_less, m_more = -s[j].ub, y[j].ub  # L, U
+
+            if m_more <= 0:
+                model.add_constraint(y[j] == 0, ctname=f"c_{i}_{j}")
+                continue
+
+            if m_less >= 0:
+                model.add_constraint(A[j, :] @ x + b[j] == y[j], ctname=f"c_{i}_{j}")
+                continue
+
+            if m_less < 0 < m_more:
+                model.add_constraints(
+                    [
+                        A[j, :] @ x + b[j] == y[j] - s[j],
+                        y[j] <= m_more * a[j],
+                        s[j] <= -m_less * (1 - a[j]),
+                    ],
+                    names=[f"c_{i}_{j}", f"c_y_{i}_{j}", f"c_s_{i}_{j}"],
+                )
+                continue
+
+    return model
+
+
 
 
 def codify_network_relaxed(
@@ -100,11 +189,11 @@ def codify_network_fischetti_relaxed(
     output_variables: list,
     output_bounds_binary_variables: list,
 ):
-    """Codify a neural network into a MILP model using the Fischetti method with relaxed constraints."""
+    """Codify a neural network into a MILP model using the Fischetti method
+    with relaxed constraints."""
     output_bounds = []
 
-    # for i in range(len(layers)):
-    for i, layer in enumerate(layers):
+    for i, _ in enumerate(layers):
         A = layers[i].get_weights()[0].T
         b = layers[i].bias.numpy()
         x = input_variables if i == 0 else intermediate_variables[i - 1]
@@ -130,23 +219,25 @@ def codify_network_fischetti_relaxed(
                 s[j].set_ub(max(0, -m_less))
 
                 if m_more <= 0:
-                    mdl.add_constraint(y[j] == 0)
+                    mdl.add_constraint(y[j] == 0, ctname=f"c_{i}_{j}")
                     continue
 
                 if m_less >= 0:
-                    mdl.add_constraint(A[j, :] @ x + b[j] == y[j])
+                    mdl.add_constraint(A[j, :] @ x + b[j] == y[j], ctname=f"c_{i}_{j}")
                     continue
 
                 if m_less < 0 and 0 < m_more:
                     mdl.add_constraint(
                         A[j, :] @ x + b[j] == y[j] - s[j], ctname=f"c_{i}_{j}"
                     )
-                    mdl.add_constraint(y[j] <= m_more * a[j])
-                    mdl.add_constraint(s[j] <= -m_less * (1 - a[j]))
+                    mdl.add_constraint(y[j] <= m_more * a[j], ctname=f"c_y_{i}_{j}")
+                    mdl.add_constraint(
+                        s[j] <= -m_less * (1 - a[j]), ctname=f"c_s_{i}_{j}"
+                    )
                     continue
 
             else:
-                mdl.add_constraint(A[j, :] @ x + b[j] == y[j], ctname=f"c_{i}_{j}")
+                mdl.add_constraint(A[j, :] @ x + b[j] == y[j], ctname=f"o_{i}_{j}")
                 lb, ub = output_bounds_binary_variables[j]
                 y[j].set_lb(lb)
                 y[j].set_ub(ub)
@@ -168,7 +259,7 @@ def codify_network_fischetti(
     output_bounds = []
 
     # for i in range(len(layers)):
-    for i, layer in enumerate(layers):
+    for i, _ in enumerate(layers):
         A = layers[i].get_weights()[0].T
         b = layers[i].bias.numpy()
         x = input_variables if i == 0 else intermediate_variables[i - 1]
@@ -182,35 +273,33 @@ def codify_network_fischetti(
         for j in range(A.shape[0]):
 
             if i != len(layers) - 1:
-                mdl.add_constraint(
-                    A[j, :] @ x + b[j] == y[j] - s[j], ctname=f"c_{i}_{j}"
-                )
-                mdl.add_indicator(a[j], y[j] <= 0, 1)
-                mdl.add_indicator(a[j], s[j] <= 0, 0)
+                mdl.add_constraint(A[j, :] @ x + b[j] == y[j] - s[j], ctname=f"c_{i}_{j}")
+                mdl.add_indicator(a[j], y[j] <= 0, 1, name=f"c_y_ind_{i}_{j}")
+                mdl.add_indicator(a[j], s[j] <= 0, 0, name=f"c_s_ind_{i}_{j}")
 
                 mdl.maximize(y[j])
                 mdl.solve()
-                ub_y = mdl.solution.get_objective_value() # type: ignore
+                ub_y = mdl.solution.get_objective_value()  # type: ignore
                 mdl.remove_objective()
 
                 mdl.maximize(s[j])
                 mdl.solve()
-                ub_s = mdl.solution.get_objective_value() # type: ignore
+                ub_s = mdl.solution.get_objective_value()  # type: ignore
                 mdl.remove_objective()
 
                 y[j].set_ub(ub_y)
                 s[j].set_ub(ub_s)
 
             else:
-                mdl.add_constraint(A[j, :] @ x + b[j] == y[j], ctname=f"c_{i}_{j}")
+                mdl.add_constraint(A[j, :] @ x + b[j] == y[j], ctname=f"o_{i}_{j}")
                 mdl.maximize(y[j])
                 mdl.solve()
-                ub = mdl.solution.get_objective_value() # type: ignore
+                ub = mdl.solution.get_objective_value()  # type: ignore
                 mdl.remove_objective()
 
                 mdl.minimize(y[j])
                 mdl.solve()
-                lb = mdl.solution.get_objective_value() # type: ignore
+                lb = mdl.solution.get_objective_value()  # type: ignore
                 mdl.remove_objective()
 
                 y[j].set_ub(ub)
@@ -230,7 +319,7 @@ def codify_network_tjeng(
 ):
     output_bounds = []
 
-    for i in range(len(layers)):
+    for i, _ in enumerate(layers):
         A = layers[i].get_weights()[0].T
         b = layers[i].bias.numpy()
         x = input_variables if i == 0 else intermediate_variables[i - 1]
@@ -244,7 +333,7 @@ def codify_network_tjeng(
 
             mdl.maximize(A[j, :] @ x + b[j])
             mdl.solve()
-            ub = mdl.solution.get_objective_value()
+            ub = mdl.solution.get_objective_value()  # type: ignore
             mdl.remove_objective()
 
             if ub <= 0 and i != len(layers) - 1:
@@ -254,7 +343,7 @@ def codify_network_tjeng(
 
             mdl.minimize(A[j, :] @ x + b[j])
             mdl.solve()
-            lb = mdl.solution.get_objective_value()
+            lb = mdl.solution.get_objective_value()  # type: ignore
             mdl.remove_objective()
 
             if lb >= 0 and i != len(layers) - 1:
@@ -286,7 +375,7 @@ def codify_network(
     model: object, dataframe: pd.DataFrame, method: str, relaxe_constraints: bool
 ):
     """Codify a neural network into a MILP model."""
-    layers = model.layers # type: ignore
+    layers = model.layers  # type: ignore
     num_features = layers[0].get_weights()[0].shape[0]
     mdl = mp.Model()
 
@@ -297,7 +386,7 @@ def codify_network(
         input_variables = mdl.continuous_var_list(num_features, lb=bounds_input[:, 0], ub=bounds_input[:, 1], name="x")  # type: ignore
     else:
         input_variables = []
-        for i in range(len(domain_input)):
+        for i, _ in enumerate(domain_input):
             lb, ub = bounds_input[i]
             if domain_input[i] == "C":
                 input_variables.append(mdl.continuous_var(lb=lb, ub=ub, name=f"x_{i}"))
@@ -306,9 +395,7 @@ def codify_network(
             elif domain_input[i] == "B":
                 input_variables.append(mdl.binary_var(name=f"x_{i}"))
 
-    intermediate_variables = []
-    auxiliary_variables = []
-    decision_variables = []
+    intermediate_variables, auxiliary_variables, decision_variables = [], [], []
 
     for i in range(len(layers) - 1):
         weights = layers[i].get_weights()[0]
@@ -363,8 +450,8 @@ def codify_network(
 
 
 def get_domain_and_bounds_inputs(dataframe: pd.DataFrame):
-    domain = []
-    bounds = []
+    """Get the domain and bounds of the input variables."""
+    domain, bounds = [], []
     for column in dataframe.columns[:-1]:
         if len(dataframe[column].unique()) == 2:
             domain.append("B")
