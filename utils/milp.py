@@ -65,7 +65,8 @@ def relax_model(
                 ]
             )
 
-            # Change the type of the variable to continuous for the relaxed j-th neuron in the i-th layer
+            # Change the type of the variable to continuous 
+            # for the relaxed j-th neuron in the i-th layer
             a[j].set_vartype("Continuous")
 
             # Add the new constraints for the relaxed j-th neuron in the i-th layer
