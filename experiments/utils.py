@@ -51,5 +51,6 @@ def generate_layers_to_relax(
     """
     layers_to_relax = [False] * len(neural_network.layers)
     for _, idx in enumerate(layers_idx):
-        layers_to_relax[idx] = True
+        if not(idx < 0 or idx >= len(neural_network.layers)):
+            layers_to_relax[idx] = True
     return layers_to_relax
